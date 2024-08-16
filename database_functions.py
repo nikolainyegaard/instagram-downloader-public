@@ -175,11 +175,11 @@ def add_user(cursor, user_id, username):
     cursor.connection.commit()
 
 
-def add_to_queue(cursor, id, user_id, user_priority, username, media_pk, media_type_int, media_type_str, author_id, media_number):
+def add_to_queue(cursor, id, user_id, user_priority, username, media_pk, media_type_int, media_type_str, author_id, media_number, youtube_id):
     cursor.execute('''
-    INSERT OR IGNORE INTO queue (id, user_id, user_priority, username, media_pk, media_type_int, media_type_str, author_id, media_number)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (id, user_id, user_priority, username, media_pk, media_type_int, media_type_str, author_id, media_number))
+    INSERT OR IGNORE INTO queue (id, user_id, user_priority, username, media_pk, media_type_int, media_type_str, author_id, media_number, youtube_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (id, user_id, user_priority, username, media_pk, media_type_int, media_type_str, author_id, media_number, youtube_id))
     cursor.connection.commit()
 
 

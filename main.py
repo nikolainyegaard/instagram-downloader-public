@@ -953,7 +953,7 @@ def handle_media_share(message, user_id, username, priority):
     try:
         post_url = message["xma_media_share"][0]["target_url"].split("?")[0]
     except:
-        return False, False, False, False, False
+        return False, False, False, False, False, None
     for index, key in enumerate(senders, start=1):
         sender = senders[key]["client"]
         username_sender = senders[key]["username"]
@@ -964,16 +964,16 @@ def handle_media_share(message, user_id, username, priority):
             media_type_str, media_number = determine_post_type(media_info)
             media_type_int = media_info.media_type
             #add_to_queue(cursor, user_id, user_priority, username, media_pk, media_type_int, media_type_str, author_id, media_number)
-            return media_type_str, media_type_int, post_pk, author_id, media_number
+            return media_type_str, media_type_int, post_pk, author_id, media_number, None
         except Exception as e:
             if "Media not found or unavailable" in str(e):
                 print_error(f"handle_media_share() - FAILED with sender {username_sender}")
                 print_error_message(e)
                 send_message_from_receiver("One of the posts you sent appears to have been deleted or removed.", user_id, username)
-                return False, False, False, False, False
+                return False, False, False, False, False, None
             print_error(f"handle_media_share() - FAILED with sender {username_sender}")
             print_error_message(e)
-    return False, False, False, False, False
+    return False, False, False, False, False, None
 
 
 def handle_reel(message, user_id, username, priority):
@@ -987,7 +987,7 @@ def handle_reel(message, user_id, username, priority):
                 author_id = media_info.model_dump()["user"]["username"]
                 media_type_str, media_number = determine_post_type(media_info)
                 media_type_int = media_info.media_type
-                return media_type_str, media_type_int, post_pk, author_id, media_number
+                return media_type_str, media_type_int, post_pk, author_id, media_number, None
             except:
                 try:
                     print_error(f"handle_reel() - Problems getting Reel media info with sender {username_sender}")
@@ -997,26 +997,30 @@ def handle_reel(message, user_id, username, priority):
                     pass
     except Exception as e:
         print_error(f"handle_reel() failed with {e}")
-    return False, False, False, False, False
+    return False, False, False, False, False, None
 
 def prepare_youtube_element_for_queue(url, user_id, username, priority):
     url = url.split("?")[0]
     identifier = url.split("/")[-1]
     youtube_item = YouTube(url, on_progress_callback = on_progress)
-    author = youtube_item.author
-    key = f"{user_id}_{identifier}"
-    queue_item = {
-        "user_id": user_id,
-        "user_priority": priority,
-        "username": username,
-        "media_pk": url,
-        "media_type_int": 3,
-        "media_type_str": "YouTube video",
-        "author_id": author,
-        "media_number": 1,
-        "youtube_id": identifier
-        }
-    return key, queue_item
+    author_id = youtube_item.author
+    media_number = 1
+    post_pk = url
+    media_type_str = "YouTube video"
+    media_type_int = 3
+    # key = f"{user_id}_{identifier}"
+    # queue_item = {
+    #     "user_id": user_id,
+    #     "user_priority": priority,
+    #     "username": username,
+    #     "media_pk": url,
+    #     "media_type_int": 3,
+    #     "media_type_str": "YouTube video",
+    #     "author_id": author,
+    #     "media_number": 1,
+    #     "youtube_id": identifier
+    #     }
+    return media_type_str, media_type_int, post_pk, author_id, media_number, identifier
     
 def handle_link(message, user_id, username, priority):
     try:
@@ -1035,35 +1039,35 @@ def handle_link(message, user_id, username, priority):
                 author_id = media_info.model_dump()["user"]["username"]
                 media_type_str, media_number = determine_post_type(media_info)
                 media_type_int = media_info.media_type
-                return media_type_str, media_type_int, post_pk, author_id, media_number
+                return media_type_str, media_type_int, post_pk, author_id, media_number, None
             except Exception as e:
                 if "Media not found or unavailable" in str(e):
                     print_error_message(e)
                     send_message_from_receiver("One of the links you sent appears to have been deleted or removed.", user_id, username)
-                    return False, False, False, False, False
+                    return False, False, False, False, False, None
                 else:
                     print_error(f"handle_link() - FAILED with sender {username_sender}")
                     print_error_message(e)
         send_message_from_receiver("There was a problem with your link. Try sending the Reel normally.", user_id, username)
-        return False, False, False, False, False
+        return False, False, False, False, False, None
     elif "instagram.com/stories/" in url:
         send_message_from_receiver("Downloading stories via links is currently not supported. You can use links for Reels or YouTube Shorts or YouTube videos.", user_id, username)
     elif "youtube.com" in url or "yt.be" in url or "youtu.be" in url:
         try:
-            key, item = prepare_youtube_element_for_queue(url, user_id, username, priority)
-            return media_type_str, media_type_int, post_pk, author_id, media_number
+            media_type_str, media_type_int, post_pk, author_id, media_number, youtube_id = prepare_youtube_element_for_queue(url, user_id, username, priority)
+            return media_type_str, media_type_int, post_pk, author_id, media_number, youtube_id
         except Exception as e:
             send_message_from_receiver("There was a problem with your link. Try a different video or try again later.", user_id, username)
             print_error_message(e)
 
-    return False, False, False, False, False
+    return False, False, False, False, False, None
 
 
 def handle_story(message, user_id, username, priority):
     try:
         post_url = message["xma_story_share"][0]["target_url"].split("?")[0]
     except:
-        return False, False, False, False, False
+        return False, False, False, False, False, None
     for index, key in enumerate(senders, start=1):
         sender = senders[key]["client"]
         username_sender = senders[key]["username"]
@@ -1073,10 +1077,10 @@ def handle_story(message, user_id, username, priority):
             author_id = media_info.model_dump()["user"]["username"]
             media_type_str, media_number = determine_post_type(media_info)
             media_type_int = media_info.media_type
-            return media_type_str, media_type_int, post_pk, author_id, media_number
+            return media_type_str, media_type_int, post_pk, author_id, media_number, None, None
         except:
             print_error(f"handle_story() - Get media_info from post_pk FAILED with sender {username_sender}")
-            return False, False, False, False, False
+            return False, False, False, False, False, None
 
 
 def handle_love(user_id, name, username):
@@ -1101,7 +1105,7 @@ def handle_downloaded_command(user_id, name, username, content):
         send_message_from_receiver(f"Invalid format: {content}\n\n'Downloaded' commands should be formatted as '!downloaded <username or \"me\">'.", user_id, username)
     uploader = content_split.strip("@")
 
-def handle_help_command(user_id, name, arguments, content):
+def handle_help_command(user_id, name, arguments, content, username):
     update_command_stats("help")
     match len(arguments):
         case 1:
@@ -1148,7 +1152,7 @@ def handle_commands(content, content_unedited, user_id, name, username):
     command = arguments[0]
     match command:
         case "!help":
-            handle_help_command(user_id, name, arguments, content)
+            handle_help_command(user_id, name, arguments, content, username)
         case "!downloads":
             handle_downloads_command(user_id, name, username)
         case "!downloaded":
@@ -1264,6 +1268,7 @@ def handle_threads(threads):
             print_time(f"Handling message {index} of {total_messages}")
             message_id = message["item_id"]
 
+            youtube_id = None
             post_pk = False
             media_number = 0
 
@@ -1282,17 +1287,17 @@ def handle_threads(threads):
             # print(message_type)
             match message_type, index:
                 case "xma_media_share", _:
-                    media_type_str, media_type_int, post_pk, author_id, media_number = handle_media_share(message, user_id, username, priority)
+                    media_type_str, media_type_int, post_pk, author_id, media_number, _ = handle_media_share(message, user_id, username, priority)
                 case "clip", _:
-                    media_type_str, media_type_int, post_pk, author_id, media_number = handle_reel(message, user_id, username, priority)
+                    media_type_str, media_type_int, post_pk, author_id, media_number, _ = handle_reel(message, user_id, username, priority)
                 case "link", _:
-                    send_message_from_receiver("Links are broken right now, but I'll be fixing it tomorrow. Sorry for the inconvenience!", user_id, username)
-                    #media_type_str, media_type_int, post_pk, author_id, media_number = handle_link(message, user_id, username, priority)
+                    #send_message_from_receiver("Links are broken right now, but I'll be fixing it tomorrow. Sorry for the inconvenience!", user_id, username)
+                    media_type_str, media_type_int, post_pk, author_id, media_number, _ = handle_link(message, user_id, username, priority)
                 case "xma_link", _:
-                    send_message_from_receiver("Links are broken right now, but I'll be fixing it tomorrow. Sorry for the inconvenience!", user_id, username)
-                    #media_type_str, media_type_int, post_pk, author_id, media_number = handle_link(message, user_id, username, priority)
+                    #send_message_from_receiver("Links are broken right now, but I'll be fixing it tomorrow. Sorry for the inconvenience!", user_id, username)
+                    media_type_str, media_type_int, post_pk, author_id, media_number, youtube_id = handle_link(message, user_id, username, priority)
                 case "xma_story_share", _:
-                    media_type_str, media_type_int, post_pk, author_id, media_number = handle_story(message, user_id, username, priority)
+                    media_type_str, media_type_int, post_pk, author_id, media_number, _ = handle_story(message, user_id, username, priority)
                 case "xma_profile", _:
                     continue
                 case "text", _:
@@ -1309,7 +1314,7 @@ def handle_threads(threads):
             id = database_functions.generate_unique_id(user_id, post_pk)
 
             if media_number != 0:
-                database_functions.add_to_queue(cursor, id, user_id, priority, username, post_pk, media_type_int, media_type_str, author_id, media_number)
+                database_functions.add_to_queue(cursor, id, user_id, priority, username, post_pk, media_type_int, media_type_str, author_id, media_number, youtube_id)
                 items_added_to_queue.append((media_number, media_type_str, author_id))
                 match media_number:
                     case 1:
