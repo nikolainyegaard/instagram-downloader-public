@@ -1,0 +1,7 @@
+instagrapi
+pytube
+pytubefix
+imageio
+pillow
+numpy
+moviepy
