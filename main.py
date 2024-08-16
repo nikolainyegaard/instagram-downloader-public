@@ -1351,7 +1351,7 @@ def handle_queue():
         directory = os.path.join(os.getcwd(), f"Temp/{user_id}/{author}/{media_pk}")
         os.makedirs(directory, exist_ok=True)
 
-        status = 0
+    status = 0
 
     try:
         if media_type_int == 8:
