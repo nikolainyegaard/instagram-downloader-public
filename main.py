@@ -64,7 +64,7 @@ def shuffle_senders():
     random.shuffle(senders)
 
 def print_spacer():
-    print("")
+    print_time("")
 
 def update_bio(status):
     match status:
@@ -615,7 +615,11 @@ def added_x_to_queue_message(items_list):
         accounts_plural = "the sender account"
     else:
         accounts_plural = "one or two of the sender accounts"
-    footer = f"\n\nYou will receive the downloaded media from a different account.\n\n⚠️ If you get an error saying your media couldn't be delivered, it's because the senders were blocked from messaging you. To fix this, send message like 'hi' to {accounts_plural} below. Otherwise, they will not be able to send you your downloaded media:"
+    match random.randint(1,2):
+        case 1:
+            footer = f"\n\nYou will receive the downloaded media from a different account. Write '!help' for more information.\n\n⚠️ If you get an error saying your media couldn't be delivered, it's because the senders were blocked from messaging you. To fix this, send message like 'hi' to {accounts_plural} below. Otherwise, they will not be able to send you your downloaded media:"
+        case 2:
+            footer = f"\n\nYour photos and videos will be sent from different account. You can type '!help' for more info.\n\n⚠️ If you get an error message about your media not being able to be delivered, it's likely because the senders were denied from messaging you. To fix this, send message like 'hi' to {accounts_plural} below. If not, they will not be able to send you your photos and videos:"
     footer_accounts = ""
     for account in senders_usernames:
         footer_accounts += f"\n• @{account}"
@@ -1144,12 +1148,10 @@ def handle_contact_command(id, username, content, content_unedited):
 def handle_message_command(sender_id, sender_username, content, content_unedited):
     if sender_username in admins:
         receiver_id = 0
-        receiver_username = content.split(" ")[1]
+        receiver_username = content.split(" ")[1].strip("@")
         message_raw = content_unedited.removeprefix(f"!message {receiver_username}")
         try:
             receiver_id = database_functions.get_id_from_username(cursor, receiver_username)
-            print(f"receiver_id: {receiver_id}")
-            print(f"sender_id: {sender_id}")
         except:
             pass
         if receiver_id == 0:
@@ -1157,10 +1159,12 @@ def handle_message_command(sender_id, sender_username, content, content_unedited
                 receiver_id = receiver.user_id_from_username(receiver_username)
             except:
                 send_message_from_receiver(f"Failed to get user ID for @{receiver_username}. Please check that the username is valid.", sender_id, username)
-        message = (f"Message from @{sender_username}:\n\n{message_raw}\n\nUse '!contact' to reply.")
+        message = (f"Message from admin:\n\n{message_raw}\n\nUse '!contact' to reply.")
         send_message_from_receiver(message, receiver_id, receiver_username)
         time.sleep(0.5)
         send_message_from_receiver(f"Message sent to @{receiver_username}!", sender_id, sender_username)
+        time.sleep(1)
+        delete_thread_as_receiver(receiver_id)
     else:
         send_message_from_receiver("You do not have permission to use this command.", sender_id, sender_username)
 
@@ -1312,7 +1316,7 @@ def handle_threads(threads):
             database_functions.update_checked_messages(cursor, user_id, message_id, max_length=15)
 
             message_type = message["item_type"]
-            # print(message_type)
+            # print_time(message_type)
             match message_type, index:
                 case "xma_media_share", _:
                     media_type_str, media_type_int, post_pk, author_id, media_number, _ = handle_media_share(message, user_id, username, priority)
