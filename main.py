@@ -148,7 +148,7 @@ try:
     with open (f"Credentials/owner.txt", "r") as file:
         owner_data = file.read().splitlines()
         owner_username = owner_data[0]
-        owner_id = owner_data[0]
+        owner_id = owner_data[1]
 except Exception as e:
     print_time(f"Could not find credentials file owner.txt")
     print_error_message(e)
@@ -296,7 +296,10 @@ sign_in_to_sender_accounts()
 local_files_path = f"Local files/{system_receiver}/"
 
 def delete_thread_as_receiver(id):
-    receiver.direct_thread_hide(id)
+    try:
+        receiver.direct_thread_hide(id)
+    except:
+        pass
 
 def send_message_from_receiver(content, id, username):
     global recently_ratelimited
@@ -807,7 +810,7 @@ def download_photo(post_pk, user_id, directory, username, author_id):
                 break
             except Exception as e:
                 print_error(f"Problems downloading photo using sender @{username_sender}.")
-                #print_error_message(e)
+                print_error_message(e)
                 print_error(f"Retrying with next sender...")
     status = 0
     # Loop over media in folder to send to the user
@@ -1077,7 +1080,7 @@ def handle_story(message, user_id, username, priority):
             author_id = media_info.model_dump()["user"]["username"]
             media_type_str, media_number = determine_post_type(media_info)
             media_type_int = media_info.media_type
-            return media_type_str, media_type_int, post_pk, author_id, media_number, None, None
+            return media_type_str, media_type_int, post_pk, author_id, media_number, None
         except:
             print_error(f"handle_story() - Get media_info from post_pk FAILED with sender {username_sender}")
             return False, False, False, False, False, None
