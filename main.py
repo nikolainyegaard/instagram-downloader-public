@@ -1141,6 +1141,29 @@ def handle_contact_command(id, username, content, content_unedited):
     time.sleep(random.randint(5,15)/10)
     send_message_from_receiver(messageToUser, id, username)
     
+def handle_message_command(sender_id, sender_username, content, content_unedited):
+    if sender_username in admins:
+        receiver_id = 0
+        receiver_username = content.split(" ")[1]
+        message_raw = content_unedited.removeprefix(f"!message {receiver_username}")
+        try:
+            receiver_id = database_functions.get_id_from_username(cursor, receiver_username)
+            print(f"receiver_id: {receiver_id}")
+            print(f"sender_id: {sender_id}")
+        except:
+            pass
+        if receiver_id == 0:
+            try:
+                receiver_id = receiver.user_id_from_username(receiver_username)
+            except:
+                send_message_from_receiver(f"Failed to get user ID for @{receiver_username}. Please check that the username is valid.", sender_id, username)
+        message = (f"Message from @{sender_username}:\n\n{message_raw}\n\nUse '!contact' to reply.")
+        send_message_from_receiver(message, receiver_id, receiver_username)
+        time.sleep(0.5)
+        send_message_from_receiver(f"Message sent to @{receiver_username}!", sender_id, sender_username)
+    else:
+        send_message_from_receiver("You do not have permission to use this command.", sender_id, sender_username)
+
 def handle_day_command(id, name, username):
     update_command_stats("day")
     send_message_from_receiver("The !day command currently doesn't work :-(", id, username)
@@ -1164,6 +1187,8 @@ def handle_commands(content, content_unedited, user_id, name, username):
             handle_contact_command(user_id, username, content, content_unedited)
         case "!day":
             handle_day_command(user_id, name, username)
+        case "!message":
+            handle_message_command(user_id, username, content, content_unedited)
         case _:
             handle_unknown_command(user_id, name, username, content)
 

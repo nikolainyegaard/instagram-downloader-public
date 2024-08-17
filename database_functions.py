@@ -256,6 +256,16 @@ def update_command_stats(cursor, command, increment):
         ''', (command, increment))
     cursor.connection.commit()
 
+
+def get_id_from_username(cursor, username):
+    cursor.execute('''
+    SELECT user_id FROM users
+    WHERE username = ?
+    ''', (username,))
+    user_id = cursor.fetchone()[0] or 0
+    return user_id
+
+
 def update_stats(cursor):
     cursor.execute('''
     SELECT SUM(downloads) FROM downloaded_posts
@@ -280,6 +290,7 @@ def update_stats(cursor):
         SET total_downloads = ?, total_users = ?
         ''', (total_downloads, total_users))
     cursor.connection.commit()
+
 
 def update_user_total_downloads(cursor, user_id):
     cursor.execute('''
