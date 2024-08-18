@@ -25,17 +25,17 @@ system_receiver = str(sys.argv[1])
 os.makedirs(f'Local files/', exist_ok=True)
 
 # Establish a connection to the database file, and create one if not present
-conn = sqlite3.connect(f'Local files/{system_receiver}.db')
+global_conn = sqlite3.connect(f'Local files/{system_receiver}.db')
 # Declare the 'cursor' variable for the database
-cursor = conn.cursor()
+global_cursor = global_conn.cursor()
 # Create all the empty tables in the database if they are not already presnet
-database_functions.create_tables(cursor)
+database_functions.create_tables(global_cursor)
 
 
 path = f"Local files/{system_receiver}/database.json"
 
 if os.path.exists(path):
-    json_to_database.convert_database_from_json(cursor, path)
+    json_to_database.convert_database_from_json(global_cursor, path)
     os.remove(path)
     time.sleep(1)
     os.removedirs(f"Local files/{system_receiver}")
@@ -63,8 +63,6 @@ def shuffle_senders():
     global senders
     random.shuffle(senders)
 
-def print_spacer():
-    print_time("")
 
 def update_bio(status):
     match status:
@@ -80,9 +78,9 @@ def update_bio(status):
     #receiver.account_edit(biography=new_bio)
     #print_time("Updated bio!")
 
-def update_command_stats(command):
+def update_command_stats(command, inbox_cursor):
     # Command names: love, thank, help, downloads, contact, day
-    database_functions.update_command_stats(cursor, command, 1)
+    database_functions.update_command_stats(inbox_cursor, command, 1)
 
 def status_message(status, type, acc_from, acc_to, error="", author_id=""):
     if type.lower() != "words":
@@ -235,6 +233,7 @@ def sign_in_to_receiver_account():
     print_error(f"Could not log in with {receiver_credentials[0]} after {attempts} tries. Aborting.")
     sys.exit(1)
 
+
 def sign_in_to_sender_accounts():
     print_time("Running 'sign_in_to_sender_accounts()")
     global senders
@@ -246,7 +245,6 @@ def sign_in_to_sender_accounts():
         except:
             print_time(f"Could not find credentials file {username}.txt")
             sys.exit(1)
-        
         try:
             print_time(f"Trying to sign in with @{sender_credentials[0]}...")
             #senders[index].login(sender_credentials[0], sender_credentials[1], verification_code=input("MFA: "))
@@ -266,14 +264,13 @@ def sign_in_to_sender_accounts():
             seconds = random.randint(3,10)
             print_time(f"Sleeping for {seconds} seconds to stagger sign-in attempts.")
             time.sleep(seconds)
-    
     senders = copy.deepcopy(updated_senders)
-
     if len(senders) == 0:
         print_error(f"NO senders found! See error messages. Aborting script.")
         sys.exit(1)
     else:
         print_time(f"{len(senders)} sender(s) successfully acquired.")
+
 
 def log_in_again(key):
     global senders
@@ -295,11 +292,13 @@ sign_in_to_sender_accounts()
 
 local_files_path = f"Local files/{system_receiver}/"
 
+
 def delete_thread_as_receiver(id):
     try:
         receiver.direct_thread_hide(id)
     except:
         pass
+
 
 def send_message_from_receiver(content, id, username):
     global recently_ratelimited
@@ -328,6 +327,7 @@ def send_message_from_receiver(content, id, username):
         print_error_message(e)
     return
 
+
 def send_message(content, id, username):
     global senders
     for index, key in enumerate(senders, start=1):
@@ -352,6 +352,7 @@ def send_message(content, id, username):
                 print_error_message(e)
     shuffle_senders()
     return
+
 
 def send_photo(content, id, username, author_id):
     global senders
@@ -384,6 +385,7 @@ def send_photo(content, id, username, author_id):
                 print_error_message(e)
     shuffle_senders()
     return
+
 
 def send_video(content, id, username, author_id):
     global senders
@@ -434,48 +436,57 @@ def my_downloads(total, top, name):
     message = header + body1 + body2 + body3 + footer
     return message
 
+
 def help_message(name):
     message = f"Hello {name}!\n\nHere is the help menu:\n• !help donate\n• !help priority\n• !help commands\n• !help general\n• !help reels\n• !help posts\n• !help stories\n• !help contact"
     return message
+
 
 def help_commands_message(name):
     message = f"Hello {name}!\n\nHere is the list of commands:\n• !downloads - Shows your total downloads and a list of the top 3 uploaders you've downloaded from.\n• !contact <message> - Sends a message to the admin, for things like questions or reporting issues.\n• !day - Shows statistics for today, like the number of downloads, users, and new users."
     return message
 
+
 def help_donations_message(name):
     message = f"Hello {name}!\n\nIf you want to support me and the development of the service, you can choose to donate a few dollars to me through the Ko-fi link in my bio, or shout out the service on your story on a public account.\n\nIf you donate or give me a shoutout, you also receive benefits!\n\nTo receive benefits, you have to contact me to let me know you've donated or shouted me out using the !contact command. Type '!help contact' for more info.\n\nBenefits include an increased priority level in the queue, and an increased 'message search depth' when sending things to the bot.\n\nTo learn more about priority and search depth, type '!help priority'."
     return message
+
 
 def help_priority_message(name):
     message = f"Hello {name}!\n\nFor each $3 donated or story shouout done, you will receive 1 additional level of priority.\n\nPriority is a value associated with each user of the service. Whenever the queue is handled, it is sorted so that users with the highest priority gets their posts first, and don't have to wait for the queue to finish.\n\nMesage search depth is a value which determines how many messages in the conversation the bot will look at and download.\n\nBy default, tihs value is 2, meaning if you send the bot 5 posts in a row, it will only look at and download the last 2 posts. This value increases +1 for each level of priority, so if you have priority level 4, it will look at the last 5 posts in the conversation."
     return message
 
+
 def help_posts_message(name):
     message = f"Hello {name}!\n\nTo download posts, simply send the post to the bot using the send button.\n\nThe bot works with both single photo, single video, and album posts.\n\nIf the post is from a private page, it won't work unless I follow them.\n\nIf you want me to follow someone, type '!contact Can you follow @accountname?' and I'll send them a request."
     return message
+
 
 def help_reels_message(name):
     message = f"Hello {name}!\n\nTo download reels, simply send the reel to the bot using the send button.\n\nOccasionally, Instagram will prevent this from working due to some unknown reason, and when that happens, you can send the link to the reel instead. The link will always work, but sending it normally is faster and easier.\n\nIf the reel is from a private account, it won't work unless I follow them.\n\nIf you want me to follow someone, type '!contact Can you follow @accountname?' and I'll send them a request."
     return message
 
+
 def help_stories_message(name):
     message = f"Hello {name}!\n\nTo download reels, simply send the story to the bot using the send button.\n\nSometimes, stories don't have the send button if the creator has changed their settings to not allow it. In this case, you can't download the story, unfortunately.\n\nIf the story is from a private account, it won't work unless I follow them.\n\nIf you want me to follow someone, type '!contact Can you follow @accountname?' and I'll send them a request."
     return message
+
 
 def help_contact_message(name):
     message = f"Hello {name}!\n\nYou can use the !contact command to send a message directly to the admin.\n\nTo do this, simply type '!contact' followed by whatever you want to say.\n\nHere is an example:\n\n!contact Hey, I have some questions about the bot. Can you message me back?"
     return message
 
+
 def help_general_message(name):
     message = f"Hello {name}!\n\nThis is a downloader bot which you can use to convert an Instagram post into a video or photo you can save to your phone.\n\nTo do this, simply send the reel, post, or story to the bot, and after a couple minutes, you'll get sent a photo or video from one of the sender-bots.\n\nWe also support YouTube Shorts and YouTube videos, which you can download by copying the link for the YouTube video and sending it to the bot."
     return message
+
 
 def welcome_message(name):
     if name == "":
         name_string = ""
     else:
         name_string = f" {name}"
-
     match random.randint(1,3):
         case 1:
             header = f"Greetings{name_string}!\n\n"
@@ -483,7 +494,6 @@ def welcome_message(name):
             header = f"Welcome{name_string}!\n\n"
         case 3:
             header = f"Salutations{name_string}!\n\n"
-
     match random.randint(1,3):
         case 1:
             body1 = f"You can type '!help' for more info or type '!contact <message>' to send a message to the admin.\n\n"
@@ -491,7 +501,6 @@ def welcome_message(name):
             body1 = f"Feel free to use the !help command to get some more info, or send me a message by typing !contact followed by what you want to say, like \"!contact Hello!\"\n\n"
         case 3:
             body1 = f"If you want more information, type !help, and if you want to reach out to me, type !contact followed by your message.\n\n"
-
     match random.randint(1,3):
         case 1:
             body2 = f"Sometimes when you use the bot for the first time, your downloaded pictures and videos don't get delivered by the sender bots. This can be because your message settigns blocks accounts you don't follow from messaging you. If this happens, please try sending a message to one or two of the sender accounts, which can be found in the queue message, and try downloading your post again.\n\n"
@@ -499,7 +508,6 @@ def welcome_message(name):
             body2 = f"If it's your first time using the bot and you notice you didn't receive your downloaded photos or videos, it can be because your message settings stops the sender bots from messaging you. To fix this, send a message like 'Hi' to one or two of the sender accounts (found in the queue message), and try downloading the post again.\n\n"
         case 3:
             body2 = f"If you've tried downloading a post but noticed that you didn't get your downloaded photos or videos, it can sometimes be because your message settings doesn't allow messages from accounts you don't follow. To fix this, please send a message, like 'Hello', to one or two of the sender bots (you can find them in the queue message). Then, try to download the post again.\n\n"
-
     match random.randint(1,3):
         case 1:
             footer = f"Thank you for using the service, and happy downloading!"
@@ -507,9 +515,7 @@ def welcome_message(name):
             footer = f"Thanks for reading, and happy downloading!"
         case 3:
             footer = f"Thank you, happy downloading, and have a nice day!"
-    
     message = header + body1 + body2 + footer
-
     # Return the message
     return message
 
@@ -539,7 +545,6 @@ def i_love_you(name):
                     message = f"R-really? I love you too, {name}..."
                 case 4:
                     message = f"You're just saying that, {name}..."
-
     return message
 
 
@@ -609,7 +614,6 @@ def added_x_to_queue_message(items_list):
                 string = f"• {quantity} items from @{author}\n"
         else:
             string = f"• {quantity} video from {author}\n"
-
         body += string
     if len(senders_usernames) == 1:
         accounts_plural = "the sender account"
@@ -626,7 +630,8 @@ def added_x_to_queue_message(items_list):
     message = header+body+footer+footer_accounts
     return message
 
-def parse_user(user_string):
+
+def parse_json(user_string):
     user_data = {}
     # Regular expression to match key-value pairs
     pattern = re.compile(r"(\w+)='([^']*)'|(\w+)=([^ ]*)")
@@ -639,6 +644,7 @@ def parse_user(user_string):
         user_data[key] = value
     return user_data
 
+
 def get_inbox():
     threads = []
     pending_threads = []
@@ -648,25 +654,31 @@ def get_inbox():
         receiver.direct_threads(selected_filter="unread")
         #receiver.direct_threads(amount=20)
         time.sleep(random.randint(10,20)/10)
-    except:
-        pass
+    except Exception as e:
+        print_error_message(e)
     last_json_inbox = receiver.last_json
     try:
         inbox_threads = last_json_inbox["inbox"]["threads"]#[0:20]
         print_time(f"Fetched {len(inbox_threads)} new inbox threads!")
     except Exception as e:
+        print_error_message(e)
         return False
     try:
+        # If the inbox is empty, roll the dice to check pending requests
         if len(inbox_threads) == 0:
-            return inbox_threads
-    except:
-        pass
+            match random.randint(1,5):
+                case 3:
+                    pass
+                case _:
+                    return inbox_threads
+    except Exception as e:
+        print_error_message(e)
     print_time("Fetching pending threads...")
     try:
         receiver.direct_pending_inbox(amount=20)
         time.sleep(random.randint(10,20)/10)
-    except:
-        pass
+    except Exception as e:
+        print_error_message(e)
     last_json_pending = receiver.last_json
     pending_threads = last_json_pending["inbox"]["threads"]
     print_time(f"Fetched {len(pending_threads)} new pending threads!")
@@ -686,6 +698,7 @@ def convert_heic_and_send(media_path, directory, filename):
     except Exception as e:
         print_error(f"An error occurred: {e}")
         raise
+
 
 # Function for downloading the images and videos of an album
 def download_album(post_pk, user_id, directory, username, author_id):
@@ -710,7 +723,7 @@ def download_album(post_pk, user_id, directory, username, author_id):
     status = 0
     for index, filename in enumerate(files, start=1):
         media_path = os.path.join(directory, filename)
-        print_time(f"Sending file {index} of {len(files)}")
+        # print_time(f"Sending file {index} of {len(files)}")
         match filename.split('.')[-1]:
             case "jpg" | "jpeg" | "png"  | "webp":
                 status = send_photo(media_path, user_id, username, author_id)
@@ -730,6 +743,7 @@ def download_album(post_pk, user_id, directory, username, author_id):
         if status == 403:
             return 403
 
+
 # Function for downloading single videos, like Reels
 def download_video(post_pk, user_id, directory, username, author_id):
     # Download the media to the path
@@ -747,7 +761,7 @@ def download_video(post_pk, user_id, directory, username, author_id):
                 time.sleep(random.randint(10,20)/10)
                 break
             except Exception as e:
-                print_error(f"Video download failed with @{username_sender}.")
+                print_error(f"Video download from @{author_id} failed with @{username_sender}.")
                 #print_error_message(e)
                 print_error(f"Retrying with next sender...")
     status = 0
@@ -762,6 +776,7 @@ def download_video(post_pk, user_id, directory, username, author_id):
                 continue
         if status == 403:
             return 403
+
 
 # Function for downloading single videos, like Reels
 def download_story(post_pk, user_id, directory, username, author_id):
@@ -779,7 +794,7 @@ def download_story(post_pk, user_id, directory, username, author_id):
                 time.sleep(random.randint(10,20)/10)
                 break
             except Exception as e:
-                print_error(f"Story download failed with @{username_sender}.")
+                print_error(f"Story download from @{author_id} failed with @{username_sender}.")
                 print_error_message(e)
                 print_error(f"Retrying with next sender...")
     status = 0
@@ -813,7 +828,7 @@ def download_photo(post_pk, user_id, directory, username, author_id):
                 #print_time(f"Successfully downloaded photo with @{username_sender}")
                 break
             except Exception as e:
-                print_error(f"Problems downloading photo using sender @{username_sender}.")
+                print_error(f"Problems downloading photo from @{author_id} using sender @{username_sender}.")
                 print_error_message(e)
                 print_error(f"Retrying with next sender...")
     status = 0
@@ -837,9 +852,9 @@ def download_photo(post_pk, user_id, directory, username, author_id):
             return 403
 
 
-def download_youtube(url, user_id, directory, username, identifier, author_id):
+def download_youtube(url, user_id, directory, username, identifier, author_id, queue_cursor):
     try:
-        priority = database_functions.get_priority(cursor, user_id)
+        priority = database_functions.get_priority(queue_cursor, user_id)
     except Exception as e:
         print_error(f"Problems getting the user priority from the database")
         return
@@ -940,14 +955,22 @@ def download_youtube(url, user_id, directory, username, identifier, author_id):
         print_error("send_video() inside download_youtube() failed")
         print_error_message(e)
         return
-    
+
 
 def determine_post_type(media_info):
-    match media_info.media_type, media_info.product_type:
-        case 1, _:
-            return "photo", 1
+    try:
+        media_type = int(media_info["media_type"])
+        product_type = media_info["product_type"]
+    except:
+        media_type = media_info.media_type
+        product_type = media_info.product_type
+    match media_type, product_type:
+        case 1, "story":
+            return "story", 1
         case 2, "story":
             return "story", 1
+        case 1, _:
+            return "photo", 1
         case 2, _:
             return "video", 1
         case 8, _:
@@ -970,7 +993,6 @@ def handle_media_share(message, user_id, username, priority):
             author_id = media_info.model_dump()["user"]["username"]
             media_type_str, media_number = determine_post_type(media_info)
             media_type_int = media_info.media_type
-            #add_to_queue(cursor, user_id, user_priority, username, media_pk, media_type_int, media_type_str, author_id, media_number)
             return media_type_str, media_type_int, post_pk, author_id, media_number, None
         except Exception as e:
             if "Media not found or unavailable" in str(e):
@@ -1006,6 +1028,7 @@ def handle_reel(message, user_id, username, priority):
         print_error(f"handle_reel() failed with {e}")
     return False, False, False, False, False, None
 
+
 def prepare_youtube_element_for_queue(url, user_id, username, priority):
     url = url.split("?")[0]
     identifier = url.split("/")[-1]
@@ -1015,20 +1038,9 @@ def prepare_youtube_element_for_queue(url, user_id, username, priority):
     post_pk = url
     media_type_str = "YouTube video"
     media_type_int = 3
-    # key = f"{user_id}_{identifier}"
-    # queue_item = {
-    #     "user_id": user_id,
-    #     "user_priority": priority,
-    #     "username": username,
-    #     "media_pk": url,
-    #     "media_type_int": 3,
-    #     "media_type_str": "YouTube video",
-    #     "author_id": author,
-    #     "media_number": 1,
-    #     "youtube_id": identifier
-    #     }
     return media_type_str, media_type_int, post_pk, author_id, media_number, identifier
-    
+
+
 def handle_link(message, user_id, username, priority):
     try:
         url = message["link"]["text"]
@@ -1079,41 +1091,52 @@ def handle_story(message, user_id, username, priority):
         sender = senders[key]["client"]
         username_sender = senders[key]["username"]
         try:
-            post_pk = sender.story_pk_from_url(post_url)
-            media_info = sender.story_info(post_pk)
-            author_id = media_info.model_dump()["user"]["username"]
-            media_type_str, media_number = determine_post_type(media_info)
-            media_type_int = media_info.media_type
+            try:
+                post_pk = sender.story_pk_from_url(post_url)
+                media_info = sender.story_info(post_pk)
+            except Exception as e:
+                print_error_message(e)
+            if type(media_info) != dict:
+                try:
+                    media_info = parse_json(str(media_info))
+                except Exception as e:
+                    print_error_message(e)
+            try:
+                author_id = media_info["username"]
+                media_type_str, media_number = determine_post_type(media_info)
+                media_type_int = int(media_info["media_type"])
+            except Exception as e:
+                print_error_message(e)
             return media_type_str, media_type_int, post_pk, author_id, media_number, None
         except:
             print_error(f"handle_story() - Get media_info from post_pk FAILED with sender {username_sender}")
             return False, False, False, False, False, None
 
 
-def handle_love(user_id, name, username):
+def handle_love(user_id, name, username, inbox_cursor):
     response = i_love_you(name)
-    update_command_stats("love")
+    update_command_stats("love", inbox_cursor)
     send_message_from_receiver(response, user_id, username)
 
-def handle_thanks(user_id, name, username):
+def handle_thanks(user_id, name, username, inbox_cursor):
     response = thanks(name)
-    update_command_stats("thanks")
+    update_command_stats("thanks", inbox_cursor)
     send_message_from_receiver(response, user_id, username)
 
-def handle_downloads_command(user_id, name, username):
-    total_downloads = database_functions.get_total_downloads_user(cursor, user_id)
-    top_downloads = database_functions.get_top_downloads_user(cursor, user_id)
-    update_command_stats("downloads")
+def handle_downloads_command(user_id, name, username, inbox_cursor):
+    total_downloads = database_functions.get_total_downloads_user(inbox_cursor, user_id)
+    top_downloads = database_functions.get_top_downloads_user(inbox_cursor, user_id)
+    update_command_stats("downloads", inbox_cursor)
     send_message_from_receiver(my_downloads(total_downloads, top_downloads, name), user_id, username)
 
 def handle_downloaded_command(user_id, name, username, content):
     content_split = content.split(" ")
     if len(content_split) != 2:
         send_message_from_receiver(f"Invalid format: {content}\n\n'Downloaded' commands should be formatted as '!downloaded <username or \"me\">'.", user_id, username)
-    uploader = content_split.strip("@")
+    uploader = content_split[1].strip("@")
 
-def handle_help_command(user_id, name, arguments, content, username):
-    update_command_stats("help")
+def handle_help_command(user_id, name, arguments, content, username, inbox_cursor):
+    update_command_stats("help", inbox_cursor)
     match len(arguments):
         case 1:
             send_message_from_receiver(help_message(name), user_id, username)
@@ -1136,22 +1159,50 @@ def handle_help_command(user_id, name, arguments, content, username):
         case _:
             send_message_from_receiver(f"Invalid format: {content}\n\nHelp commands should be formatted as '!help <argument>'.", user_id, username)
 
-def handle_contact_command(id, username, content, content_unedited):
+def handle_contact_command(id, username, content, content_unedited, inbox_cursor):
     extracted_message = content_unedited.removeprefix("!contact ")
     messageToAdmin = f"You have a new message!\n\nFrom @{username}:\n\n{extracted_message}"
     messageToUser = f"Mesasge sent to @{owner_username}:\n\n{extracted_message}"
-    update_command_stats("contact")
+    update_command_stats("contact", inbox_cursor)
     send_message_from_receiver(messageToAdmin, owner_id, owner_username)
     time.sleep(random.randint(5,15)/10)
     send_message_from_receiver(messageToUser, id, username)
     
-def handle_message_command(sender_id, sender_username, content, content_unedited):
+def handle_advertise_command(sender_id, sender_username, content, name, thread_id, inbox_cursor):
+    if sender_username in admins:
+        receiver_id = 0
+        receiver_username = content.split(" ")[1].strip("@")
+        try:
+            receiver_id = database_functions.get_id_from_username(inbox_cursor, receiver_username)
+        except:
+            pass
+        if receiver_id == 0:
+            try:
+                receiver_id = receiver.user_id_from_username(receiver_username)
+            except:
+                send_message_from_receiver(f"Failed to get user ID for @{receiver_username}. Please check that the username is valid.", sender_id, username)
+        match name:
+            case "":
+                name_string = ""
+            case _:
+                name_string = f" {name}"
+        
+        message = (f"Hello{name_string}!\n\nI wanted to tell you about Image Downloader, which is a free service I created. With this service, you can download any video, Reel, story, or album on Instagram and save it to your phone. As a meme page, I thought you might find this useful.\n\nThe service costs nothing, has no limits, and has no ads. I just get joy from helping people.\n\nPlease check it out if you want, and if not, no worries!\n\nPS: This is not an automated message. I specifically send this message to pages I personally follow and enjoy.\n\nCreated by @nikolai_nyegaard.")
+        send_message_from_receiver(message, receiver_id, receiver_username)
+        time.sleep(0.5)
+        send_message_from_receiver(f"Advertisement sent to @{receiver_username}!", sender_id, sender_username)
+        time.sleep(1)
+        delete_thread_as_receiver(thread_id)
+    else:
+        send_message_from_receiver("You do not have permission to use this command.", sender_id, sender_username)
+    
+def handle_message_command(sender_id, sender_username, content, content_unedited, thread_id, inbox_cursor):
     if sender_username in admins:
         receiver_id = 0
         receiver_username = content.split(" ")[1].strip("@")
         message_raw = content_unedited.removeprefix(f"!message {receiver_username}")
         try:
-            receiver_id = database_functions.get_id_from_username(cursor, receiver_username)
+            receiver_id = database_functions.get_id_from_username(inbox_cursor, receiver_username)
         except:
             pass
         if receiver_id == 0:
@@ -1164,12 +1215,12 @@ def handle_message_command(sender_id, sender_username, content, content_unedited
         time.sleep(0.5)
         send_message_from_receiver(f"Message sent to @{receiver_username}!", sender_id, sender_username)
         time.sleep(1)
-        delete_thread_as_receiver(receiver_id)
+        delete_thread_as_receiver(thread_id)
     else:
         send_message_from_receiver("You do not have permission to use this command.", sender_id, sender_username)
 
-def handle_day_command(id, name, username):
-    update_command_stats("day")
+def handle_day_command(id, name, username, inbox_cursor):
+    update_command_stats("day", inbox_cursor)
     send_message_from_receiver("The !day command currently doesn't work :-(", id, username)
     pass
 
@@ -1177,50 +1228,54 @@ def handle_unknown_command(id, name, username, content):
     message =f"Unknown command: {content}"
     send_message_from_receiver(message, id, username)
 
-def handle_commands(content, content_unedited, user_id, name, username):
+def handle_commands(content, content_unedited, user_id, name, username, thread_id, inbox_cursor):
     arguments = content.split(" ")
     command = arguments[0]
     match command:
         case "!help":
-            handle_help_command(user_id, name, arguments, content, username)
+            handle_help_command(user_id, name, arguments, content, username, inbox_cursor)
         case "!downloads":
-            handle_downloads_command(user_id, name, username)
+            handle_downloads_command(user_id, name, username, inbox_cursor)
         case "!downloaded":
-            handle_downloaded_command(user_id, name, username, content)
+            handle_downloaded_command(user_id, name, username, content, inbox_cursor)
         case "!contact":
-            handle_contact_command(user_id, username, content, content_unedited)
+            handle_contact_command(user_id, username, content, content_unedited, inbox_cursor)
         case "!day":
-            handle_day_command(user_id, name, username)
+            handle_day_command(user_id, name, username, inbox_cursor)
         case "!message":
-            handle_message_command(user_id, username, content, content_unedited)
+            handle_message_command(user_id, username, content, content_unedited, thread_id, inbox_cursor)
+        case "!advertise":
+            handle_advertise_command(user_id, username, content, name, thread_id, inbox_cursor)
         case _:
             handle_unknown_command(user_id, name, username, content)
 
 
-def handle_text(message, user_id, name, username):
+def handle_text(message, user_id, name, username, thread_id, inbox_cursor):
     content_unedited = message["text"]
     content = content_unedited.lower()
     if content[0] == "!":
-        handle_commands(content, content_unedited, user_id, name, username)
+        handle_commands(content, content_unedited, user_id, name, username, thread_id, inbox_cursor)
     elif "love you" in content or "luv you" in content or "love u" in content or "luv u" in content:
-        handle_love(user_id, name, username)
+        handle_love(user_id, name, username, inbox_cursor)
     elif "thank" in content or "thx" in content or "cheers" in content or "goat" in content or "the best" in content:
-        handle_thanks(user_id, name, username)
+        handle_thanks(user_id, name, username, inbox_cursor)
 
 
 # Handle the messages fetched from the inbox
-def handle_threads(threads):
+def handle_threads(threads, inbox_cursor):
     total_threads = len(threads)
 
     # Loop through all threads in inbox
     for index, thread in enumerate(threads, start=1):
+
+        thread_id = thread["thread_id"]
 
         # Declare thread variables
         try:
             user = thread["users"][0]
         except:
             try:
-                delete_thread_as_receiver(thread["thread_id"])
+                delete_thread_as_receiver(thread_id)
             except:
                 continue
             continue
@@ -1229,7 +1284,7 @@ def handle_threads(threads):
 
         # Check the variable type of the 'user' object
         if type(user) != dict:
-            user = parse_user(str(user))
+            user = parse_json(str(user))
         
         # Declare user detail variables
         username = user["username"]
@@ -1237,14 +1292,13 @@ def handle_threads(threads):
         name = user["full_name"]
 
         # Update the total number of downloads for the user in the database
-        database_functions.update_user_total_downloads(cursor, user_id)
+        database_functions.update_user_total_downloads(inbox_cursor, user_id)
 
         if not name.isupper():
             name = name.title()
 
         num_of_items_added_to_queue = 0
         
-        print_spacer()
         print_time(f"Handling thread {index} of {total_threads} for user @{username}")
         
         # If the user's name is "Instragram User", they are a banned account and handling their messages is a waste of time.
@@ -1252,7 +1306,7 @@ def handle_threads(threads):
         deleted_indicator = "__deleted__"
         if username == comparison_name or deleted_indicator in username:
             print_time(f"Deleting thread for @{username}")
-            delete_thread_as_receiver(thread["thread_id"])
+            delete_thread_as_receiver(thread_id)
             continue
         try:
             message_text = all_messages[0]["text"]
@@ -1266,27 +1320,27 @@ def handle_threads(threads):
                     pass
                 else:
                     print_time("Last message in thread is from the bot. Skipping thread.")
-                    delete_thread_as_receiver(thread["thread_id"])
+                    delete_thread_as_receiver(thread_id)
                     continue
             else:
                 print_time("Last message in thread is from the bot. Skipping thread.")
-                delete_thread_as_receiver(thread["thread_id"])
+                delete_thread_as_receiver(thread_id)
                 continue
 
         # If the user's name is in the 'ignored_users' list, continue to the next thread without processing the messages
         if username in ignored_users:
-            delete_thread_as_receiver(thread["thread_id"])
+            delete_thread_as_receiver(thread_id)
             continue
 
         # Check if the user is a new user
-        if database_functions.user_exists_check(cursor, user_id):
+        if database_functions.user_exists_check(inbox_cursor, user_id):
             new_user = False
         else:
             send_message_from_receiver(welcome_message(name), user_id, username)
             new_user = True
-            database_functions.add_user(cursor, user_id, username)
+            database_functions.add_user(inbox_cursor, user_id, username)
         
-        priority = database_functions.get_priority(cursor, user_id)
+        priority = database_functions.get_priority(inbox_cursor, user_id)
 
         # Hard coded "priority" function. Remove later for more refined function.
         message_depth = priority+1
@@ -1309,11 +1363,11 @@ def handle_threads(threads):
                 pass
             else:
                 # If the message exists in the checked_messages array of the user, skip the rest of the thread
-                if database_functions.message_already_checked(cursor, user_id, message_id):
+                if database_functions.message_already_checked(inbox_cursor, user_id, message_id):
                     break
 
             # If the message does not exist in the checked_messages array, run the function to add it and update the database
-            database_functions.update_checked_messages(cursor, user_id, message_id, max_length=15)
+            database_functions.update_checked_messages(inbox_cursor, user_id, message_id, max_length=15)
 
             message_type = message["item_type"]
             # print_time(message_type)
@@ -1333,7 +1387,7 @@ def handle_threads(threads):
                 case "xma_profile", _:
                     continue
                 case "text", _:
-                    handle_text(message, user_id, name, username)
+                    handle_text(message, user_id, name, username, thread_id, inbox_cursor)
                 case "placeholder", 1:
                     send_message_from_receiver(placeholder_error_message(), user_id, username)
                     continue
@@ -1346,7 +1400,7 @@ def handle_threads(threads):
             id = database_functions.generate_unique_id(user_id, post_pk)
 
             if media_number != 0:
-                database_functions.add_to_queue(cursor, id, user_id, priority, username, post_pk, media_type_int, media_type_str, author_id, media_number, youtube_id)
+                database_functions.add_to_queue(inbox_cursor, id, user_id, priority, username, post_pk, media_type_int, media_type_str, author_id, media_number, youtube_id)
                 items_added_to_queue.append((media_number, media_type_str, author_id))
                 match media_number:
                     case 1:
@@ -1359,21 +1413,21 @@ def handle_threads(threads):
                 continue
         
         if num_of_items_added_to_queue == 0:
-            delete_thread_as_receiver(thread["thread_id"])
+            delete_thread_as_receiver(thread_id)
             continue
 
         send_message_from_receiver(added_x_to_queue_message(items_added_to_queue), user_id, username)
         time.sleep(random.randint(10,20)/10)
 
         if username not in admins:
-            delete_thread_as_receiver(thread["thread_id"])
+            delete_thread_as_receiver(thread_id)
 
 
-def handle_queue():
+def handle_queue(queue_cursor):
     # Get the details of the next item in the queue
-    id, user_id, _, username, media_pk, media_type_int, media_type_str, author, media_number, youtube_id = database_functions.get_oldest_queue_item(cursor)
+    id, user_id, _, username, media_pk, media_type_int, media_type_str, author, media_number, youtube_id = database_functions.get_oldest_queue_item(queue_cursor)
     
-    queue_count = database_functions.get_row_count(cursor, 'queue')
+    queue_count = database_functions.get_row_count(queue_cursor, 'queue')
     print_time(f"Current queue: {queue_count}")
 
     if not youtube_id is None:
@@ -1408,53 +1462,75 @@ def handle_queue():
                 print_error(f"download_photo() in handle_queue() failed with: {e}")
         elif media_type_int == 3:
             try:
-                download_youtube(media_pk, user_id, directory, username, youtube_id, author)
+                download_youtube(media_pk, user_id, directory, username, youtube_id, author, queue_cursor)
             except Exception as e:
                 print_error(f"download_youtube() in handle_queue() failed with: {e}")
 
         if status != 403:
-            database_functions.update_user_downloads(cursor, user_id, author, media_number)
+            database_functions.update_user_downloads(queue_cursor, user_id, author, media_number)
     except Exception as e:
         print_error(f"handle_queue() - Error processing media: {e}")
     
-    database_functions.remove_queue_item(cursor, id)
+    database_functions.remove_queue_item(queue_cursor, id)
     time.sleep(random.randint(10,20)/10)
 
 
-def process_complete_spacer(process):
-    print_spacer()
-    print_time(f"Finished processing {process}!")
-    print_spacer()
+def initiate_inbox(stop_event):
+    inbox_conn = sqlite3.connect(f'Local files/{system_receiver}.db')
+    inbox_cursor = inbox_conn.cursor()
+    while not stop_event.is_set():
+        threads = get_inbox()
+        if threads == False:
+            print_error(f"Unable to fetch inbox. Ratelimit likely. Check account.")
+            input("Press enter when account has been checked")
+        elif len(threads) == 0:
+            #print_error("No new messages found")
+            #print_error(f"Sleeping for {sleep_duration} seconds.")
+            stop_event.wait(random.randint(30, 90))
+        else:
+            handle_threads(threads, inbox_cursor)
+            stop_event.wait(random.randint(10, 30))
+
+
+def initiate_queue(stop_event):
+    queue_conn = sqlite3.connect(f'Local files/{system_receiver}.db')
+    queue_cursor = queue_conn.cursor()
+    while not stop_event.is_set():
+        status = status = database_functions.queue_is_empty(queue_cursor)
+        # Handle the queue
+        while status == False:
+            handle_queue(queue_cursor)
+            status = database_functions.queue_is_empty(queue_cursor)
+        database_functions.update_stats(queue_cursor)
+        stop_event.wait(5)
 
 
 def main():
-    # Only run handle_threads() if there are any threads
-    threads = get_inbox()
-    if threads == False:
-        print_error(f"Unable to fetch inbox. Ratelimit likely. Check account.")
-        input("Press enter when account has been checked")
-    elif len(threads) == 0:
-        print_error("No new messages found")
-        sleep = random.randint(60, 180)
-        print_error(f"Sleeping for {round(sleep/60)} minutes. Press Ctrl + C to continue.")
-        try:
-            time.sleep(sleep)
-        except:
-            pass
-    else:
-        handle_threads(threads)
-    process_complete_spacer("threads and messages")
-    status = status = database_functions.queue_is_empty(cursor)
-    # Handle the queue
-    while status == False:
-        handle_queue()
-        status = database_functions.queue_is_empty(cursor)
-    process_complete_spacer("queue")
+    stop_event = threading.Event()
 
-while True:
-    main()
-    seconds = random.randint(20,50)
-    print_time(f"Running cleanup functions.")
-    database_functions.update_stats(cursor)
-    print_time(f"Main loop completed! Sleeping for {seconds} seconds.")
-    time.sleep(seconds)
+    inbox_thread = threading.Thread(target=initiate_inbox, args=(stop_event,))
+    queue_thread = threading.Thread(target=initiate_queue, args=(stop_event,))
+
+    inbox_thread.start()
+    queue_thread.start()
+
+    try:
+        inbox_thread.join()
+        queue_thread.join()
+    except KeyboardInterrupt:
+        print_time("Stopping threads...")
+        stop_event.set()
+        inbox_thread.join()
+        queue_thread.join()
+        print_time("Threads stopped cleanly.")
+
+
+main()
+
+# while True:
+#     main()
+#     seconds = random.randint(20,50)
+#     print_time(f"Running cleanup functions.")
+#     database_functions.update_stats(cursor)
+#     print_time(f"Main loop completed! Sleeping for {seconds} seconds.")
+#     time.sleep(seconds)
