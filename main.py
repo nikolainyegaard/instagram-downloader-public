@@ -1171,6 +1171,7 @@ def handle_contact_command(id, username, content, content_unedited, inbox_cursor
 def handle_advertise_command(sender_id, sender_username, content, name, thread_id, inbox_cursor):
     if sender_username in admins:
         receiver_id = 0
+        receiver_name = ""
         receiver_username = content.split(" ")[1].strip("@")
         try:
             receiver_id = database_functions.get_id_from_username(inbox_cursor, receiver_username)
@@ -1178,17 +1179,33 @@ def handle_advertise_command(sender_id, sender_username, content, name, thread_i
             pass
         if receiver_id == 0:
             try:
-                receiver_id = receiver.user_id_from_username(receiver_username)
-            except:
-                send_message_from_receiver(f"Failed to get user ID for @{receiver_username}. Please check that the username is valid.", sender_id, username)
-        match name:
+                #receiver_id = receiver.user_id_from_username(receiver_username)
+                receiver_user = receiver.user_info_by_username(receiver_username).model_dump()
+                with open (f"user_{receiver_username}.json", "w") as f:
+                    json.dump(receiver_user, f, indent=4, default=str)
+                try:
+                    receiver_id = receiver_user["pk"]
+                    receiver_name = receiver_user["full_name"]
+                except Exception as e:
+                    print_error(f"Getting the ID and name of @{receiver_username} failed!")
+                    print_error_message(e)
+                    return
+            except Exception as e:
+                print_error("Advertisement function failed.")
+                print_error_message(e)
+                return
+        match receiver_name:
             case "":
                 name_string = ""
             case _:
-                name_string = f" {name}"
+                name_string = f" {receiver_name}"
         
         message = (f"Hello{name_string}!\n\nI wanted to tell you about Image Downloader, which is a free service I created. With this service, you can download any video, Reel, story, or album on Instagram and save it to your phone. As a meme page, I thought you might find this useful.\n\nThe service costs nothing, has no limits, and has no ads. I just get joy from helping people.\n\nPlease check it out if you want, and if not, no worries!\n\nPS: This is not an automated message. I specifically send this message to pages I personally follow and enjoy.\n\nCreated by @nikolai_nyegaard.")
-        send_message_from_receiver(message, receiver_id, receiver_username)
+        try:
+            send_message_from_receiver(message, receiver_id, receiver_username)
+        except Exception as e:
+            print_error_message(e)
+            return
         time.sleep(0.5)
         send_message_from_receiver(f"Advertisement sent to @{receiver_username}!", sender_id, sender_username)
         time.sleep(1)
