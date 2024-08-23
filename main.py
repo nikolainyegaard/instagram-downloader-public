@@ -8,6 +8,7 @@ import sys
 import random
 import copy
 import threading
+import requests
 import database_functions
 import json_to_database
 from datetime import datetime
@@ -44,20 +45,25 @@ if os.path.exists(path):
 receiver_ratelimited = False
 recently_ratelimited = False
 
+
 def print_time(body):
     current_time = datetime.now().strftime('%H:%M:%S')
     print(f"[{current_time}] {body}")
+
 
 def print_error(body):
     error_body = f"### ERROR ### | {body}"
     print_time(error_body)
 
+
 def print_error_message(e):
     print_error(f"{str(e)[0:100]}...")
 
+
 def file_time():
-    current_date = datetime.now().strftime('%H_%M_%S')
+    current_date = datetime.now().strftime(f'%d-%m_%H-%M-%S')
     return current_date
+
 
 def shuffle_senders():
     global senders
@@ -78,9 +84,16 @@ def update_bio(status):
     #receiver.account_edit(biography=new_bio)
     #print_time("Updated bio!")
 
+
 def update_command_stats(command, inbox_cursor):
     # Command names: love, thank, help, downloads, contact, day
     database_functions.update_command_stats(inbox_cursor, command, 1)
+
+
+def log_json(filename, data):
+    with open (f"{filename}.json", "w") as f:
+        json.dump(data, f, indent=4, default=str)
+
 
 def status_message(status, type, acc_from, acc_to, error="", author_id=""):
     if type.lower() != "words":
@@ -574,9 +587,12 @@ def thanks(name):
 
 
 def placeholder_error_message():
-    message = "The last message you sent encountered an error.\n\nThis might be because the post is private or the uploader has blocked me.\n\n⚠️ If it was a Reel, please try sending a link instead. This is normally not necessary, but can be a workaround when normal Reels fail."
+    message = "The last message you sent encountered an error.\n\n⚠️ If this post is a Reel, try sending it as a link instead. Some Reels cannot be downloaded the normal way for some reason.\n\nIf the post is not a Reel, then it's likely that the uploader has blocked me."
     return message
 
+def none_type_error_message():
+    message = "The last message you sent encountered an error. Please try again.\n\nIf this happens again, please contact the admin by using the !contact command, and explain the issue."
+    return message
 
 def queue_length_message(queue_length):
     message = f"There are {queue_length} items in the queue."
@@ -661,6 +677,7 @@ def get_inbox():
         inbox_threads = last_json_inbox["inbox"]["threads"]#[0:20]
         print_time(f"Fetched {len(inbox_threads)} new inbox threads!")
     except Exception as e:
+        log_json(f"inbox_threads_error_{file_time()}", last_json_inbox)
         print_error_message(e)
         return False
     try:
@@ -680,7 +697,11 @@ def get_inbox():
     except Exception as e:
         print_error_message(e)
     last_json_pending = receiver.last_json
-    pending_threads = last_json_pending["inbox"]["threads"]
+    try:
+        pending_threads = last_json_pending["inbox"]["threads"]
+    except Exception as e:
+        print_error_message(e)
+        log_json(f"pending_threads_error_{file_time()}", last_json_pending)
     print_time(f"Fetched {len(pending_threads)} new pending threads!")
 
     threads = pending_threads + inbox_threads
@@ -850,7 +871,34 @@ def download_photo(post_pk, user_id, directory, username, author_id):
                 continue
         if status == 403:
             return 403
+        
 
+def download_profile_picture(media_pk, user_id, directory, username, author):
+    try:
+        response = requests.get(media_pk)
+        with open(f'{directory}/{author}.jpg', 'wb') as file:
+            file.write(response.content)
+    except Exception as e:
+        print_error_message(e)
+    status = 0
+    # Loop over media in folder to send to the user
+    for filename in os.listdir(directory):
+        media_path = os.path.join(directory, filename)
+        match filename.split('.')[-1]:
+            case "jpg" | "jpeg" | "png"  | "webp":
+                send_photo(media_path, user_id, username, author)
+            case "heif" | "heic":
+                try:
+                    media_path = convert_heic_and_send(media_path, directory, filename.split('.')[0:-1])
+                except Exception as e:
+                    print_error(f"convert_heic_and_send() failed with file {filename}")
+                    print_error_message(e)
+                    continue
+                send_photo(media_path, user_id, username, author)
+            case _:
+                continue
+        if status == 403:
+            return 403
 
 def download_youtube(url, user_id, directory, username, identifier, author_id, queue_cursor):
     try:
@@ -1005,7 +1053,7 @@ def handle_media_share(message, user_id, username, priority):
     return False, False, False, False, False, None
 
 
-def handle_reel(message, user_id, username, priority):
+def handle_reel(message):
     try:
         post_pk = str(message["clip"]).split(" ")[0].split("=")[1]
         for index, key in enumerate(senders, start=1):
@@ -1029,7 +1077,7 @@ def handle_reel(message, user_id, username, priority):
     return False, False, False, False, False, None
 
 
-def prepare_youtube_element_for_queue(url, user_id, username, priority):
+def prepare_youtube_element_for_queue(url):
     url = url.split("?")[0]
     identifier = url.split("/")[-1]
     youtube_item = YouTube(url, on_progress_callback = on_progress)
@@ -1073,16 +1121,39 @@ def handle_link(message, user_id, username, priority):
         send_message_from_receiver("Downloading stories via links is currently not supported. You can use links for Reels or YouTube Shorts or YouTube videos.", user_id, username)
     elif "youtube.com" in url or "yt.be" in url or "youtu.be" in url:
         try:
-            media_type_str, media_type_int, post_pk, author_id, media_number, youtube_id = prepare_youtube_element_for_queue(url, user_id, username, priority)
-            return media_type_str, media_type_int, post_pk, author_id, media_number, youtube_id
+            result = prepare_youtube_element_for_queue(url)
+            return result
         except Exception as e:
             send_message_from_receiver("There was a problem with your link. Try a different video or try again later.", user_id, username)
             print_error_message(e)
 
     return False, False, False, False, False, None
 
+def handle_profile_picture(content):
+    if len(content.split(" ")) == 1:
+        profile_username = content.strip("@").strip()
+        try:
+            user = receiver.user_info_by_username(profile_username).model_dump()
+            try:
+                picture_url = user["profile_pic_url_hd"]
+                if picture_url == "":
+                    picture_url = user["profile_pic_url"]
+                    if picture_url == "":
+                        return False, False, False, False, False, None
+                media_type_str = "profile picture"
+                media_type_int = 4
+                post_pk = picture_url
+                author_id = profile_username
+                media_number = 1
+                return media_type_str, media_type_int, post_pk, author_id, media_number, None
+            except Exception as e:
+                print_error_message(e)
+        except Exception as e:
+            print_error_message(e)
+    return False, False, False, False, False, None
 
-def handle_story(message, user_id, username, priority):
+
+def handle_story(message):
     try:
         post_url = message["xma_story_share"][0]["target_url"].split("?")[0]
     except:
@@ -1179,10 +1250,7 @@ def handle_advertise_command(sender_id, sender_username, content, name, thread_i
             pass
         if receiver_id == 0:
             try:
-                #receiver_id = receiver.user_id_from_username(receiver_username)
                 receiver_user = receiver.user_info_by_username(receiver_username).model_dump()
-                with open (f"user_{receiver_username}.json", "w") as f:
-                    json.dump(receiver_user, f, indent=4, default=str)
                 try:
                     receiver_id = receiver_user["pk"]
                     receiver_name = receiver_user["full_name"]
@@ -1272,10 +1340,16 @@ def handle_text(message, user_id, name, username, thread_id, inbox_cursor):
     content = content_unedited.lower()
     if content[0] == "!":
         handle_commands(content, content_unedited, user_id, name, username, thread_id, inbox_cursor)
+        return False, False, False, False, False, None
+    elif content[0] == "@":
+        media_type_str, media_type_int, post_pk, author_id, media_number, _ = handle_profile_picture(content)
+        return media_type_str, media_type_int, post_pk, author_id, media_number, None
     elif "love you" in content or "luv you" in content or "love u" in content or "luv u" in content:
         handle_love(user_id, name, username, inbox_cursor)
+        return False, False, False, False, False, None
     elif "thank" in content or "thx" in content or "cheers" in content or "goat" in content or "the best" in content:
         handle_thanks(user_id, name, username, inbox_cursor)
+        return False, False, False, False, False, None
 
 
 # Handle the messages fetched from the inbox
@@ -1366,6 +1440,8 @@ def handle_threads(threads, inbox_cursor):
         total_messages = len(user_messages[0:message_depth])
         items_added_to_queue = []
 
+        keep = False
+
         # Loop through all messages in thread
         for index, message in enumerate(user_messages[0:message_depth], start=1):
             print_time(f"Handling message {index} of {total_messages}")
@@ -1387,26 +1463,82 @@ def handle_threads(threads, inbox_cursor):
             database_functions.update_checked_messages(inbox_cursor, user_id, message_id, max_length=15)
 
             message_type = message["item_type"]
+
+            if message is None or message_type is None:
+                print_error("NoneType message found:")
+                print(message)
+                continue
+
+            if type(message) == str:
+                message = parse_json(message)
+
             # print_time(message_type)
             match message_type, index:
                 case "xma_media_share", _:
-                    media_type_str, media_type_int, post_pk, author_id, media_number, _ = handle_media_share(message, user_id, username, priority)
+                    output = handle_media_share(message, user_id, username, priority)
+                    if not output is None:
+                        media_type_str, media_type_int, post_pk, author_id, media_number, _ = output
+                    else:
+                        print_error(f"Error with: {message_type}")
+                        send_message_from_receiver(none_type_error_message(), user_id, username)
+                        log_json(f"{file_time()}_thread_{thread_id}", thread)
+                        log_json(f"{file_time()}_message_{message_type}_{message_id}", message)
+                        keep = True
                 case "clip", _:
-                    media_type_str, media_type_int, post_pk, author_id, media_number, _ = handle_reel(message, user_id, username, priority)
+                    output = handle_reel(message)
+                    if not output is None:
+                        media_type_str, media_type_int, post_pk, author_id, media_number, _ = output
+                    else:
+                        print_error(f"Error with: {message_type}")
+                        send_message_from_receiver(none_type_error_message(), user_id, username)
+                        log_json(f"{file_time()}_thread_{thread_id}", thread)
+                        log_json(f"{file_time()}_message_{message_type}_{message_id}", message)
+                        keep = True
                 case "link", _:
-                    #send_message_from_receiver("Links are broken right now, but I'll be fixing it tomorrow. Sorry for the inconvenience!", user_id, username)
-                    media_type_str, media_type_int, post_pk, author_id, media_number, _ = handle_link(message, user_id, username, priority)
+                    output = handle_link(message, user_id, username, priority)
+                    if not output is None:
+                        media_type_str, media_type_int, post_pk, author_id, media_number, _ = output
+                    else:
+                        print_error(f"Error with: {message_type}")
+                        send_message_from_receiver(none_type_error_message(), user_id, username)
+                        log_json(f"{file_time()}_thread_{thread_id}", thread)
+                        log_json(f"{file_time()}_message_{message_type}_{message_id}", message)
+                        keep = True
                 case "xma_link", _:
-                    #send_message_from_receiver("Links are broken right now, but I'll be fixing it tomorrow. Sorry for the inconvenience!", user_id, username)
-                    media_type_str, media_type_int, post_pk, author_id, media_number, youtube_id = handle_link(message, user_id, username, priority)
+                    output = handle_link(message, user_id, username, priority)
+                    if not output is None:
+                        media_type_str, media_type_int, post_pk, author_id, media_number, youtube_id = output
+                    else:
+                        print_error(f"Error with: {message_type}")
+                        send_message_from_receiver(none_type_error_message(), user_id, username)
+                        log_json(f"{file_time()}_thread_{thread_id}", thread)
+                        log_json(f"{file_time()}_message_{message_type}_{message_id}", message)
+                        keep = True
                 case "xma_story_share", _:
-                    media_type_str, media_type_int, post_pk, author_id, media_number, _ = handle_story(message, user_id, username, priority)
+                    output = handle_story(message)
+                    if not output is None:
+                        media_type_str, media_type_int, post_pk, author_id, media_number, _ = output
+                    else:
+                        print_error(f"Error with: {message_type}")
+                        send_message_from_receiver(none_type_error_message(), user_id, username)
+                        log_json(f"{file_time()}_thread_{thread_id}", thread)
+                        log_json(f"{file_time()}_message_{message_type}_{message_id}", message)
+                        keep = True
+                case "text", _:
+                    output = handle_text(message, user_id, name, username, thread_id, inbox_cursor)
+                    if not output is None:
+                        media_type_str, media_type_int, post_pk, author_id, media_number, _ = output
+                    else:
+                        print_error(f"Error with: {message_type}")
+                        send_message_from_receiver(none_type_error_message(), user_id, username)
+                        log_json(f"{file_time()}_thread_{thread_id}", thread)
+                        log_json(f"{file_time()}_message_{message_type}_{message_id}", message)
+                        keep = True
                 case "xma_profile", _:
                     continue
-                case "text", _:
-                    handle_text(message, user_id, name, username, thread_id, inbox_cursor)
                 case "placeholder", 1:
                     send_message_from_receiver(placeholder_error_message(), user_id, username)
+                    keep = True
                     continue
                 case _:
                     continue
@@ -1414,10 +1546,10 @@ def handle_threads(threads, inbox_cursor):
             if not post_pk:
                 continue
 
-            id = database_functions.generate_unique_id(user_id, post_pk)
+            id = database_functions.generate_unique_id(f"{user_id}{post_pk}")
 
             if media_number != 0:
-                database_functions.add_to_queue(inbox_cursor, id, user_id, priority, username, post_pk, media_type_int, media_type_str, author_id, media_number, youtube_id)
+                database_functions.add_to_queue(inbox_cursor, id, user_id, priority, username, str(post_pk), media_type_int, media_type_str, author_id, media_number, youtube_id)
                 items_added_to_queue.append((media_number, media_type_str, author_id))
                 match media_number:
                     case 1:
@@ -1430,13 +1562,14 @@ def handle_threads(threads, inbox_cursor):
                 continue
         
         if num_of_items_added_to_queue == 0:
-            delete_thread_as_receiver(thread_id)
+            if not keep:
+                delete_thread_as_receiver(thread_id)
             continue
 
         send_message_from_receiver(added_x_to_queue_message(items_added_to_queue), user_id, username)
         time.sleep(random.randint(10,20)/10)
 
-        if username not in admins:
+        if username not in admins and keep == False:
             delete_thread_as_receiver(thread_id)
 
 
@@ -1448,10 +1581,10 @@ def handle_queue(queue_cursor):
     print_time(f"Current queue: {queue_count}")
 
     if not youtube_id is None:
-        directory = os.path.join(os.getcwd(), f"Temp/{user_id}/{author}/{youtube_id}")
+        directory = os.path.join(os.getcwd(), f"Temp/{user_id}/{author}/{database_functions.generate_unique_id(youtube_id)}")
         os.makedirs(directory, exist_ok=True)
     else:
-        directory = os.path.join(os.getcwd(), f"Temp/{user_id}/{author}/{media_pk}")
+        directory = os.path.join(os.getcwd(), f"Temp/{user_id}/{author}/{database_functions.generate_unique_id(media_pk)}")
         os.makedirs(directory, exist_ok=True)
 
     status = 0
@@ -1482,6 +1615,11 @@ def handle_queue(queue_cursor):
                 download_youtube(media_pk, user_id, directory, username, youtube_id, author, queue_cursor)
             except Exception as e:
                 print_error(f"download_youtube() in handle_queue() failed with: {e}")
+        elif media_type_int == 4:
+            try:
+                download_profile_picture(media_pk, user_id, directory, username, author)
+            except Exception as e:
+                print_error(f"download_profile_picture() in handle_queue() failed with: {e}")
 
         if status != 403:
             database_functions.update_user_downloads(queue_cursor, user_id, author, media_number)
@@ -1513,8 +1651,8 @@ def initiate_queue(stop_event):
     queue_conn = sqlite3.connect(f'Local files/{system_receiver}.db')
     queue_cursor = queue_conn.cursor()
     while not stop_event.is_set():
-        status = status = database_functions.queue_is_empty(queue_cursor)
         # Handle the queue
+        status = status = database_functions.queue_is_empty(queue_cursor)
         while status == False:
             handle_queue(queue_cursor)
             status = database_functions.queue_is_empty(queue_cursor)
@@ -1543,11 +1681,3 @@ def main():
 
 
 main()
-
-# while True:
-#     main()
-#     seconds = random.randint(20,50)
-#     print_time(f"Running cleanup functions.")
-#     database_functions.update_stats(cursor)
-#     print_time(f"Main loop completed! Sleeping for {seconds} seconds.")
-#     time.sleep(seconds)
