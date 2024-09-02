@@ -1433,8 +1433,7 @@ def handle_threads(threads, inbox_cursor):
         
         priority = database_functions.get_priority(inbox_cursor, user_id)
 
-        # Hard coded "priority" function. Remove later for more refined function.
-        message_depth = priority+1
+        message_depth = priority*2
         
         # Declare some variables
         total_messages = len(user_messages[0:message_depth])
@@ -1528,12 +1527,7 @@ def handle_threads(threads, inbox_cursor):
                     output = handle_text(message, user_id, name, username, thread_id, inbox_cursor)
                     if not output is None:
                         media_type_str, media_type_int, post_pk, author_id, media_number, _ = output
-                    else:
-                        print_error(f"Error with: {message_type}")
-                        send_message_from_receiver(none_type_error_message(), user_id, username)
-                        log_json(f"{file_time()}_thread_{thread_id}", thread)
-                        log_json(f"{file_time()}_message_{message_type}_{message_id}", message)
-                        keep = True
+                    continue
                 case "xma_profile", _:
                     continue
                 case "placeholder", 1:
